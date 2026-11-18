@@ -1,5 +1,11 @@
 # pyspark-sales-pipeline
 
+個人の自主検証です（業務での実務経験ではありません）。データはすべて合成データです。
+
+- DataFrameとSpark SQLで同じ集計を別々に実装し、結果の一致を自動検証
+- 偏りのある300万行で結合方式を比較し、ブロードキャスト結合で中央値1.089秒→0.307秒
+- 単一マシン（local[2]）・各3回の小規模計測で、本番性能を断定するものではない
+
 - [DataFrameでのデータ加工](#dataframe-processing)
 - [Sparkの性能調査・改善](#spark-performance)
 
@@ -13,8 +19,9 @@
 
 クラウドLinux、Python 3.12、Java 21を利用。今回Javaは既設で、追加導入していない。Java 17以上が利用可能であることを `java -version` で確認する。Pythonの依存はプロジェクト内にのみ導入する。
 
+リポジトリのルートで実行。
+
 ```bash
-cd /workspace/pyspark-sales-pipeline
 python -m venv .venv
 .venv/bin/python -m pip install --no-cache-dir -r requirements.txt
 mkdir -p results
@@ -48,7 +55,7 @@ cat results/verification.json
 - `results/verification.json`: 実行環境・行数・検証成否
 - `results/run.log`: Spark実行ログと表形式の結果
 
-第1段階はデータ加工と正しさの検証を対象とした。追加の性能検証は後述。JavaとSparkはクラウド内のlocal[2]で実行し、GitHub公開は行っていない。
+第1段階はデータ加工と正しさの検証を対象とした。追加の性能検証は後述。JavaとSparkはクラウド内のlocal[2]で実行した。
 
 ## 今回の実行結果
 
@@ -79,8 +86,9 @@ cat results/verification.json
 
 ### 再現手順と比較条件
 
+リポジトリのルートで実行。
+
 ```bash
-cd /workspace/pyspark-sales-pipeline
 mkdir -p performance
 SPARK_LOCAL_IP=127.0.0.1 .venv/bin/python benchmark.py --rows 3000000 > performance/run.log 2>&1
 cat performance/report.json
@@ -134,15 +142,23 @@ SMJはcustomer_idのハッシュで入力を再分配するため、顧客0の27
 | ホットキーのソルティング | ブロードキャスト不可、AQEで解消しない大きな偏りがある場合。注文のホットキーを複数saltへ分け、対応する顧客行をsalt分複製する。結合条件と重複数を検証し、余分な複製・シャッフルと比較する。今回未実施。 |
 | 結合前の集計 | 明細の属性や明細単位の出力が不要で、集計と結合を交換しても意味が保たれる場合。件数・金額を顧客別に先に集計し、マスタと結合する。明細が必要な処理にはそのまま適用できない。今回未実施。 |
 
-3回の測定に信頼区間は付けていない。OS/JVMの残存状態、共有クラウドの負荷、実行順の影響は残る。性能の一般化には本番相当のデータサイズ・マスタサイズ・分散環境で追加検証が必要。GitHub公開は行っていない。
+3回の測定に信頼区間は付けていない。OS/JVMの残存状態、共有クラウドの負荷、実行順の影響は残る。性能の一般化には本番相当のデータサイズ・マスタサイズ・分散環境で追加検証が必要。
 
+
+## AIの提案をどう判断したか
+
+| 提案 | 採用か見送りか | 理由 |
+| --- | --- | --- |
+| 小さい顧客マスタを使い、ソートマージ結合とブロードキャスト結合を比較する | 採用 | 顧客マスタは10,001行で、注文を結合キーで再分配する方式と、マスタを配って注文側の再分配を省く方式の差を検証できるため。 |
+| 本計測の前に小規模データで両方式の出力を照合する | 採用 | 性能を比較する前に、結合方式を変えてもスキーマと全行の結果が一致することを確認するため。 |
 
 ### 公開前の小規模再現確認
 
 300万行の性能計測とは別に、2,000注文の全出力一致だけを再確認する手順を用意した。以下は性能計測もウォームアップも行わず、既存の `results/` と `performance/` を変更しない。
 
+リポジトリのルートで実行。
+
 ```bash
-cd /workspace/pyspark-sales-pipeline
 mkdir -p review/small
 SPARK_LOCAL_IP=127.0.0.1 .venv/bin/python benchmark.py --small-only > review/small/run.log 2>&1
 cat review/small/verification.json
