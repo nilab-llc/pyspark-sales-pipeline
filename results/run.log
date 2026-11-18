@@ -1,0 +1,51 @@
+WARNING: Using incubator modules: jdk.incubator.vector
+Using Spark's default log4j profile: org/apache/spark/log4j2-defaults.properties
+Setting default log level to "WARN".
+To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
+26/11/18 13:34:23 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+[Stage 0:>                                                          (0 + 2) / 2]                                                                                [Stage 25:>                 (0 + 2) / 2][Stage 26:>                 (0 + 0) / 2][Stage 26:>                                                         (0 + 2) / 2]                                                                                [Stage 78:>                                                         (0 + 2) / 2][Stage 80:>                 (0 + 2) / 2][Stage 82:>                 (0 + 0) / 1]                                                                                [Stage 171:========>        (1 + 1) / 2][Stage 172:>                (0 + 1) / 2]                                                                                [Stage 214:>                (0 + 2) / 2][Stage 216:>                (0 + 0) / 1]                                                                                {
+  "status": "PASS",
+  "executed_at_utc": "2026-11-18T04:34:42.397479+00:00",
+  "python": "3.12.14",
+  "spark": "4.0.1",
+  "java": "21.0.13",
+  "master": "local[2]",
+  "counts": {
+    "raw_orders": 21,
+    "distinct_normalized_orders": 20,
+    "valid_before_join": 11,
+    "joined_orders": 9
+  },
+  "checks": {
+    "monthly_sales": {
+      "schema_equal": true,
+      "multiset_equal_both_directions": true,
+      "ordered_rows_equal": true,
+      "rows": 3
+    },
+    "customer_ranking": {
+      "schema_equal": true,
+      "multiset_equal_both_directions": true,
+      "ordered_rows_equal": true,
+      "rows": 3
+    }
+  },
+  "expected_results_assertions": "PASS",
+  "tie_ranking_assertion": "PASS"
+}
++-------+-----------+-----------+
+|month  |total_sales|order_count|
++-------+-----------+-----------+
+|2026-01|302.00     |2          |
+|2026-02|191.00     |4          |
+|2026-03|125.50     |3          |
++-------+-----------+-----------+
+
++-----------+-------------+-----------+----------+
+|customer_id|customer_name|total_sales|sales_rank|
++-----------+-------------+-----------+----------+
+|C001       |Alice        |265.50     |1         |
+|C002       |Bob          |203.00     |2         |
+|C003       |Carol        |150.00     |3         |
++-----------+-------------+-----------+----------+
+

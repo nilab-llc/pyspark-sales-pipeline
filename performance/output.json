@@ -1,0 +1,32 @@
+[
+  {
+    "segment": 0,
+    "orders": 2760000,
+    "sales": 141660000,
+    "order_id_sum": 4140000900000
+  },
+  {
+    "segment": 1,
+    "orders": 60000,
+    "sales": 1560000,
+    "order_id_sum": 89998500000
+  },
+  {
+    "segment": 2,
+    "orders": 60000,
+    "sales": 2160000,
+    "order_id_sum": 89999100000
+  },
+  {
+    "segment": 3,
+    "orders": 60000,
+    "sales": 2760000,
+    "order_id_sum": 89999700000
+  },
+  {
+    "segment": 4,
+    "orders": 60000,
+    "sales": 3360000,
+    "order_id_sum": 90000300000
+  }
+]

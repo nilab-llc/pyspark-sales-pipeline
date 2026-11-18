@@ -1,0 +1,186 @@
+{
+  "orders": [
+    {
+      "order_id": "O01",
+      "customer_id": " C001 ",
+      "product_id": "P01",
+      "order_date": "2026-01-05",
+      "quantity": "2"
+    },
+    {
+      "order_id": "O02",
+      "customer_id": "C002",
+      "product_id": " P02 ",
+      "order_date": "2026-01-12",
+      "quantity": "4"
+    },
+    {
+      "order_id": "O03",
+      "customer_id": "C001",
+      "product_id": "P03",
+      "order_date": "2026-02-01",
+      "quantity": "3"
+    },
+    {
+      "order_id": "O04",
+      "customer_id": "C003",
+      "product_id": "P01",
+      "order_date": "2026-02-14",
+      "quantity": "1"
+    },
+    {
+      "order_id": "O05",
+      "customer_id": "C002",
+      "product_id": "P02",
+      "order_date": "2026-02-20",
+      "quantity": "2"
+    },
+    {
+      "order_id": "O06",
+      "customer_id": "C003",
+      "product_id": "P03",
+      "order_date": "2026-03-03",
+      "quantity": "5"
+    },
+    {
+      "order_id": "O07",
+      "customer_id": "C002",
+      "product_id": "P03",
+      "order_date": "2026-03-15",
+      "quantity": "5"
+    },
+    {
+      "order_id": "O08",
+      "customer_id": "C001",
+      "product_id": "P02",
+      "order_date": "2026-03-31",
+      "quantity": "1"
+    },
+    {
+      "order_id": "O09",
+      "customer_id": "C001",
+      "product_id": "P03",
+      "order_date": "2026-02-28",
+      "quantity": "1"
+    },
+    {
+      "order_id": "O09",
+      "customer_id": "C001",
+      "product_id": "P03",
+      "order_date": "2026-02-28",
+      "quantity": "1"
+    },
+    {
+      "order_id": "O10",
+      "customer_id": null,
+      "product_id": "P01",
+      "order_date": "2026-01-01",
+      "quantity": "1"
+    },
+    {
+      "order_id": "O11",
+      "customer_id": "C001",
+      "product_id": null,
+      "order_date": "2026-01-01",
+      "quantity": "1"
+    },
+    {
+      "order_id": "O12",
+      "customer_id": "C001",
+      "product_id": "P01",
+      "order_date": "bad-date",
+      "quantity": "1"
+    },
+    {
+      "order_id": "O13",
+      "customer_id": "C001",
+      "product_id": "P01",
+      "order_date": "2026-01-01",
+      "quantity": "bad"
+    },
+    {
+      "order_id": "O14",
+      "customer_id": "C001",
+      "product_id": "P01",
+      "order_date": "2026-01-01",
+      "quantity": "0"
+    },
+    {
+      "order_id": "O15",
+      "customer_id": "C001",
+      "product_id": "P01",
+      "order_date": "2026-01-01",
+      "quantity": "-1"
+    },
+    {
+      "order_id": "O16",
+      "customer_id": "C999",
+      "product_id": "P01",
+      "order_date": "2026-01-01",
+      "quantity": "1"
+    },
+    {
+      "order_id": "O17",
+      "customer_id": "C001",
+      "product_id": "P99",
+      "order_date": "2026-01-01",
+      "quantity": "1"
+    },
+    {
+      "order_id": "O18",
+      "customer_id": "C001",
+      "product_id": "P01",
+      "order_date": null,
+      "quantity": "1"
+    },
+    {
+      "order_id": "O19",
+      "customer_id": "C001",
+      "product_id": "P01",
+      "order_date": "2026-01-01",
+      "quantity": null
+    },
+    {
+      "order_id": "O20",
+      "customer_id": "   ",
+      "product_id": "P01",
+      "order_date": "2026-01-01",
+      "quantity": "1"
+    }
+  ],
+  "customers": [
+    {
+      "customer_id": " C001 ",
+      "customer_name": " Alice "
+    },
+    {
+      "customer_id": "C002",
+      "customer_name": " Bob"
+    },
+    {
+      "customer_id": "C003",
+      "customer_name": "Carol "
+    },
+    {
+      "customer_id": "C004",
+      "customer_name": "No orders"
+    }
+  ],
+  "products": [
+    {
+      "product_id": " P01 ",
+      "product_name": " Keyboard ",
+      "unit_price": "100.00"
+    },
+    {
+      "product_id": "P02",
+      "product_name": " Mouse ",
+      "unit_price": "25.50"
+    },
+    {
+      "product_id": "P03",
+      "product_name": "Cable",
+      "unit_price": "10.00"
+    }
+  ]
+}

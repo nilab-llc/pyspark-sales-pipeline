@@ -1,0 +1,16 @@
+{
+  "status": "PASS",
+  "orders": 2000,
+  "customers": 10001,
+  "full_output_schema_values_order_equal": true,
+  "actual_join": {
+    "sort_merge": "SortMergeJoin",
+    "broadcast": "BroadcastHashJoin"
+  },
+  "aqe_enabled": "false",
+  "spark": "4.0.1",
+  "java": "21.0.13",
+  "master": "local[2]",
+  "performance_runs": 0,
+  "large_dataset_executed": false
+}

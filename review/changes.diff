@@ -1,0 +1,132 @@
+--- before/README.md
++++ after/README.md
+@@ -1,4 +1,11 @@
+-# pyspark-sales-pipeline — 第1段階
++# pyspark-sales-pipeline
++
++- [DataFrameでのデータ加工](#dataframe-processing)
++- [Sparkの性能調査・改善](#spark-performance)
++
++<a id="dataframe-processing"></a>
++
++## DataFrameでのデータ加工
+ 
+ 合成の注文・顧客・商品をPySpark DataFrameで整形・結合し、月次売上と全期間の顧客別売上ランキングを生成する。Spark SQLでも生データから同じ処理を独立に行い、クラウド内のSparkで一致を検証する。
+ 
+@@ -41,7 +48,7 @@
+ - `results/verification.json`: 実行環境・行数・検証成否
+ - `results/run.log`: Spark実行ログと表形式の結果
+ 
+-性能計測、分散クラスタでの性能検証、GitHub公開は実施しない。Sparkはクラウド内のlocal[2]で実行する。
++第1段階はデータ加工と正しさの検証を対象とした。追加の性能検証は後述。JavaとSparkはクラウド内のlocal[2]で実行し、GitHub公開は行っていない。
+ 
+ ## 今回の実行結果
+ 
+@@ -64,9 +71,11 @@
+ 両集計ともスキーマ一致・双方向の行差分0・出力順一致。手計算の期待値と同額順位の追加検証もPASS。詳細は保存済みのJSONとログを参照。
+ 
+ 
+-## 追加: 顧客キーが偏る場合の結合性能検証
++<a id="spark-performance"></a>
+ 
+-第1段階のコードと `results/` は保持した。今回の追加は `benchmark.py` と `performance/` のみ。上の「性能計測は実施しない」は第1段階時点の範囲であり、以下は追加依頼による性能検証結果。
++## Sparkの性能調査・改善
++
++第1段階のコードと `results/` は保持している。偏りのある合成データで結合方式を比較した結果を以下に示す。
+ 
+ ### 再現手順と比較条件
+ 
+@@ -77,7 +86,7 @@
+ cat performance/report.json
+ ```
+ 
+-JavaとSparkは同じクラウド内だけで実行。Spark 4.0.1 / Java 21.0.13 / local[2] の単一Sparkセッションで比較した。注文300万行、顧客10,001行、注文の90%（270万行）を顧客0に集中させた。Spark rangeと式で決定的に生成し、乱数は使わない。入力のパーティション数は注文8、顧客2。両入力を同一のキャッシュに保持して全件を実体化し、両方式で共用した。キャッシュの初期化時間は計測に含めない。
++JavaとSparkは同じクラウド内だけで実行。Python 3.12.14 / Spark 4.0.1 / Java 21.0.13 / local[2]（同時実行2スレッド）の単一Sparkセッションで比較した。注文300万行、顧客10,001行、注文の90%（270万行）を顧客0に集中させた。Spark rangeと式で決定的に生成し、乱数は使わない。入力のパーティション数は注文8、顧客2。両入力を同一のキャッシュに保持して全件を実体化し、両方式で共用した。キャッシュの初期化時間は計測に含めない。
+ 
+ 本計測前に2,000注文の結合後全行をorder_id順で比較し、スキーマ・値・順序と件数の一致を確認した。各方式1回のウォームアップ後、SMJ→BHJ、BHJ→SMJ、SMJ→BHJの順で各3回計測した。各回の出力は顧客セグメント別の件数・売上・注文ID合計で、6回すべて一致した。大規模データの全明細一致を検証したという意味ではない。
+ 
+@@ -110,13 +119,13 @@
+ 
+ 各結合ステージは8タスク。SQLイベントの結合ノードにある `number of output rows` のaccumulator IDと、StageCompletedのAccumulablesを対応させてステージを特定した。タスク時間は成功タスクのFinish Time−Launch Timeで、実行待ち時間を含まない。p95は8つの実測時間から線形補間した分位点。個別のタスク時間とすべての集計値はreport.jsonに保存した。
+ 
+-シャッフルreadはTask Metricsのlocal bytesとremote bytesの合計、writeは同ステージのShuffle Bytes Writtenの合計（いずれもSparkが記録するバイト数）。SMJのreadは結合用Exchangeの入力である。一方、結合ステージのwriteは結合後のセグメント集計用Exchangeへの出力であり、結合入力のシャッフルと混同しない。BHJのread=0は結合ステージでシャッフルを読んでいないことを示すが、ブロードキャスト転送が0という意味ではない。ブロードキャスト構築と後段集計の時間は全体の処理時間に含む。
++シャッフルreadはTask Metricsのlocal bytesとremote bytesの合計、writeは同ステージのShuffle Bytes Writtenの合計（いずれもSparkが記録するバイト数）。SMJのreadは結合用Exchangeの入力である。一方、結合ステージのwriteは結合後のセグメント集計用Exchangeへの出力であり、結合入力のシャッフルと混同しない。**0 BはBHJの結合ステージのshuffle readだけを指す。** ジョブ全体のシャッフル量、shuffle write、ブロードキャスト転送量が0という意味ではない。ブロードキャスト構築と後段集計の時間は全体の処理時間に含む。
+ 
+ Sparkの生イベントログを `performance/events/`、標準出力・エラーを `performance/run.log`、集計出力を `performance/output.json` に保存した。指定された時間・結合ステージのシャッフル量・タスク時間の偏り・計画はすべて取得できた。演算子単独のタスク時間はステージ内で結合と部分集計が融合しているため分離取得していない。クラウドlocal[2]なので複数ホスト間のネットワーク転送性能も測定できない。これらを推定値で補っていない。
+ 
+ ### 原因と改善策の適用条件
+ 
+-SMJはcustomer_idのハッシュで入力を再分配するため、顧客0の270万行が同じパーティションに集まる。少数のキーが偏ると、パーティション数を増やすだけではそのキーを分割できない。今回の結合ステージでは最長タスクが中央値の約20倍、シャッフルreadが27,829,772 bytesだった。BHJは小さい顧客マスタを配り、注文の元の8パーティションで結合するためキーで注文を再分配しない。観測された時間と偏りの改善はこの計画の違いに整合する。ただし、この小規模な単一ホストの3反復だけから本番クラスタの性能を断定しない。
++SMJはcustomer_idのハッシュで入力を再分配するため、顧客0の270万行が同じパーティションに集まる。少数のキーが偏ると、パーティション数を増やすだけではそのキーを分割できない。今回の結合ステージでは最長タスクが中央値の約20倍、シャッフルreadが27,829,772 bytesだった。小さい顧客マスタを各executorに配れる場合、ブロードキャスト結合は有効である。BHJはその顧客マスタを配り、注文の元の8パーティションで結合するためキーで注文を再分配しない。観測された時間と偏りの改善はこの計画の違いに整合する。ただし、この小規模な単一ホストの3反復だけから本番クラスタの性能を断定しない。
+ 
+ | 改善策 | 適用条件・留意点 |
+ |---|---|
+@@ -126,3 +135,19 @@
+ | 結合前の集計 | 明細の属性や明細単位の出力が不要で、集計と結合を交換しても意味が保たれる場合。件数・金額を顧客別に先に集計し、マスタと結合する。明細が必要な処理にはそのまま適用できない。今回未実施。 |
+ 
+ 3回の測定に信頼区間は付けていない。OS/JVMの残存状態、共有クラウドの負荷、実行順の影響は残る。性能の一般化には本番相当のデータサイズ・マスタサイズ・分散環境で追加検証が必要。GitHub公開は行っていない。
++
++
++### 公開前の小規模再現確認
++
++300万行の性能計測とは別に、2,000注文の全出力一致だけを再確認する手順を用意した。以下は性能計測もウォームアップも行わず、既存の `results/` と `performance/` を変更しない。
++
++```bash
++cd /workspace/pyspark-sales-pipeline
++mkdir -p review/small
++SPARK_LOCAL_IP=127.0.0.1 .venv/bin/python benchmark.py --small-only > review/small/run.log 2>&1
++cat review/small/verification.json
++```
++
++この確認は結合方式間のスキーマ・全行の値・順序・件数を対象とする。第1段階のDataFrame APIとSpark SQLの比較は `results/verification.json` に保存した別の検証である。300万行では6回の集計結果を比較しており、全明細の一致は検証していない。性能表の中央値は保存済みの各3回の実測値から算出した値であり、小規模再現実行で更新しない。
++
++公開前の小規模再現確認はクラウドで1回実行し、終了コード0・PASS。実際の方式はSortMergeJoin / BroadcastHashJoin、AQEはfalse。300万行の再計測は行っていない。公開対象の全ファイルは [review/public-files.txt](review/public-files.txt)、変更差分は [review/changes.diff](review/changes.diff)、レビュー記録は [review/REVIEW.txt](review/REVIEW.txt) を参照。
+--- before/benchmark.py
++++ after/benchmark.py
+@@ -99,9 +99,11 @@
+ def main():
+     parser = argparse.ArgumentParser()
+     parser.add_argument('--rows', type=int, default=3000000)
++    parser.add_argument('--small-only', action='store_true',
++                        help='Verify 2000 full joined rows once; skip all performance runs')
+     args = parser.parse_args()
+-    out = ROOT / 'performance'
+-    out.mkdir(exist_ok=True)
++    out = ROOT / ('review/small' if args.small_only else 'performance')
++    out.mkdir(parents=True, exist_ok=True)
+     events = out / 'events'
+     events.mkdir(exist_ok=True)
+     spark = (SparkSession.builder.master('local[2]').appName('skew-join-benchmark')
+@@ -120,6 +122,23 @@
+         assert left.schema == right.schema
+         assert left.collect() == right.collect()
+         assert left.count() == 2000
++        if args.small_only:
++            actual = {}
++            for name, frame, operator in [('sort_merge', left, 'SortMergeJoin'),
++                                           ('broadcast', right, 'BroadcastHashJoin')]:
++                plan = frame._jdf.queryExecution().executedPlan().toString()
++                assert operator in plan, plan
++                actual[name] = operator
++                (out / f'{name}_plan.txt').write_text(frame._jdf.queryExecution().toString())
++            report = {'status': 'PASS', 'orders': 2000, 'customers': 10001,
++                      'full_output_schema_values_order_equal': True,
++                      'actual_join': actual, 'aqe_enabled': spark.conf.get('spark.sql.adaptive.enabled'),
++                      'spark': spark.version, 'java': spark._jvm.java.lang.System.getProperty('java.version'),
++                      'master': spark.sparkContext.master,
++                      'performance_runs': 0, 'large_dataset_executed': False}
++            (out / 'verification.json').write_text(json.dumps(report, indent=2) + '\n')
++            print(json.dumps(report, indent=2), flush=True)
++            return
+         orders, customers = inputs(spark, args.rows)
+         orders.cache(); customers.cache()
+         assert orders.count() == args.rows
+--- before/.gitignore
++++ after/.gitignore
+@@ -2,3 +2,6 @@
+ __pycache__/
+ artifacts/
+ spark-warehouse/
++# Retain machine-specific Spark events locally; publish summarized metrics/plans.
++performance/events/
++review/small/events/

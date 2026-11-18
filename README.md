@@ -1,0 +1,153 @@
+# pyspark-sales-pipeline
+
+- [DataFrameでのデータ加工](#dataframe-processing)
+- [Sparkの性能調査・改善](#spark-performance)
+
+<a id="dataframe-processing"></a>
+
+## DataFrameでのデータ加工
+
+合成の注文・顧客・商品をPySpark DataFrameで整形・結合し、月次売上と全期間の顧客別売上ランキングを生成する。Spark SQLでも生データから同じ処理を独立に行い、クラウド内のSparkで一致を検証する。
+
+## 再現手順
+
+クラウドLinux、Python 3.12、Java 21を利用。今回Javaは既設で、追加導入していない。Java 17以上が利用可能であることを `java -version` で確認する。Pythonの依存はプロジェクト内にのみ導入する。
+
+```bash
+cd /workspace/pyspark-sales-pipeline
+python -m venv .venv
+.venv/bin/python -m pip install --no-cache-dir -r requirements.txt
+mkdir -p results
+SPARK_LOCAL_IP=127.0.0.1 .venv/bin/python pipeline.py > results/run.log 2>&1
+cat results/verification.json
+```
+
+既存の `.venv` を使用するときは作成・インストールを省略できる。失敗は終了コード非0となり、原因は `results/run.log` に残る。成功時に `verification.json` を生成する。結果ファイルは再実行時に上書きされるため、各実行はログと終了コードも確認する。
+
+## データ・集計仕様
+
+- 固定の合成データのみ。注文21行、顧客4行、商品3行。元データ全件は `results/inputs.json` に保存。
+- 注文1行を1商品明細と定義する。文字列のID・名称の前後空白を除去し、日付・数量・単価を型変換。`try_cast` により不正値をNULL化する。
+- 型変換・空白除去後の全列が一致する注文の重複のみ除外する。同じ注文IDの異なる明細を一意化する仕様ではない。
+- 注文のNULL・空ID、不正日付・数量、数量0以下を除外する。顧客・商品を内部結合するため未知の参照IDも除外する。単価はNULLおよび負値を除外する。
+- 顧客・商品キーの非NULL・非空・一意性を確認し、結合による行の増殖を防ぐ。本段階の固定データにおける前提であり、実データのマスタ競合解消は対象外。
+- 売上は数量×商品単価。同一通貨の合成金額で、税・送料・値引き・返品は含めない。単価はDecimal(12,2)、明細金額はDecimal(18,2)とし、合計もDecimalで計算する。
+- 月次売上は `yyyy-MM` 昇順。order_countは採用した明細行数。
+- 顧客別ランキングは全期間の売上降順のdense_rank。同額は同順位、次順位は詰める。表示は順位・customer_id昇順。売上のない顧客は含まない。
+- SparkセッションのタイムゾーンはUTC。日付だけを使うため時刻の境界変換はない。
+
+## 検証と成果物
+
+`pipeline.py` はDataFrameとSQLで別々に整形・結合・集計する。各集計のスキーマ、双方向 `exceptAll` による重複を含む行集合、ソート後の行順を検証する。さらに手計算の期待値、除外前後の行数、同額時の順位 `[1,1,2]` をassertする。両実装が同じ誤りを持つだけでは期待値検証を通過できない。
+
+- `pipeline.py`: データ生成、DataFrame API、SQL、検証、結果保存
+- `requirements.txt`: PySpark 4.0.1の固定依存（Py4J 0.10.9.9はその依存）
+- `results/inputs.json`: 生の合成データ
+- `results/monthly_sales_{dataframe,sql}.json`: 月次売上の両出力
+- `results/customer_ranking_{dataframe,sql}.json`: 顧客ランキングの両出力
+- `results/verification.json`: 実行環境・行数・検証成否
+- `results/run.log`: Spark実行ログと表形式の結果
+
+第1段階はデータ加工と正しさの検証を対象とした。追加の性能検証は後述。JavaとSparkはクラウド内のlocal[2]で実行し、GitHub公開は行っていない。
+
+## 今回の実行結果
+
+クラウド実行は成功（終了コード0）。Python 3.12.14 / Spark 4.0.1 / OpenJDK 21.0.13 / local[2]。Javaの追加導入は不要だった。
+
+注文21行 → 整形後重複排除20行 → 入力妥当性検証後11行 → マスタ結合後9行。検証はすべてPASS。
+
+| 月 | 売上 | 明細数 |
+|---|---:|---:|
+| 2026-01 | 302.00 | 2 |
+| 2026-02 | 191.00 | 4 |
+| 2026-03 | 125.50 | 3 |
+
+| 順位 | 顧客 | 売上 |
+|---|---|---:|
+| 1 | C001 / Alice | 265.50 |
+| 2 | C002 / Bob | 203.00 |
+| 3 | C003 / Carol | 150.00 |
+
+両集計ともスキーマ一致・双方向の行差分0・出力順一致。手計算の期待値と同額順位の追加検証もPASS。詳細は保存済みのJSONとログを参照。
+
+
+<a id="spark-performance"></a>
+
+## Sparkの性能調査・改善
+
+第1段階のコードと `results/` は保持している。偏りのある合成データで結合方式を比較した結果を以下に示す。
+
+### 再現手順と比較条件
+
+```bash
+cd /workspace/pyspark-sales-pipeline
+mkdir -p performance
+SPARK_LOCAL_IP=127.0.0.1 .venv/bin/python benchmark.py --rows 3000000 > performance/run.log 2>&1
+cat performance/report.json
+```
+
+JavaとSparkは同じクラウド内だけで実行。Python 3.12.14 / Spark 4.0.1 / Java 21.0.13 / local[2]（同時実行2スレッド）の単一Sparkセッションで比較した。注文300万行、顧客10,001行、注文の90%（270万行）を顧客0に集中させた。Spark rangeと式で決定的に生成し、乱数は使わない。入力のパーティション数は注文8、顧客2。両入力を同一のキャッシュに保持して全件を実体化し、両方式で共用した。キャッシュの初期化時間は計測に含めない。
+
+本計測前に2,000注文の結合後全行をorder_id順で比較し、スキーマ・値・順序と件数の一致を確認した。各方式1回のウォームアップ後、SMJ→BHJ、BHJ→SMJ、SMJ→BHJの順で各3回計測した。各回の出力は顧客セグメント別の件数・売上・注文ID合計で、6回すべて一致した。大規模データの全明細一致を検証したという意味ではない。
+
+時間は `perf_counter()` による `collect()` の経過秒。実行計画の準備、結合、セグメント別集計、ソート、結果取得を含む。結合だけの所要時間ではない。各方式で同じ列と集計を消費し、結合が最適化で消えないようにした。
+
+### AQEと実際の結合方式
+
+- `spark.sql.adaptive.enabled=false`。方式を固定して比較するためAQEを無効化した。
+- `spark.sql.adaptive.skewJoin.enabled=true` は設定値だが、AQEが無効なのでスキュー結合の自動分割は作動しない。
+- `spark.sql.autoBroadcastJoinThreshold=-1`、`spark.sql.join.preferSortMergeJoin=true`、`spark.sql.shuffle.partitions=8`。
+- mergeヒントを両側に付けた方式は全3回で実際に `SortMergeJoin`。
+- 顧客側にbroadcastヒントを付けた方式は全3回で実際に `BroadcastHashJoin`（BuildRight）。自動ブロードキャスト無効でも明示ヒントで選択された。
+- 実行後の物理計画を各回assertし、論理・最適化・物理計画を `performance/*_plan.txt` に保存した。
+
+### 実測結果
+
+| 方式 | 処理時間の中央値（秒） |
+|---|---:|
+| sort_merge | 1.089073 |
+| broadcast | 0.307314 |
+
+| 方式・回 | 秒 | 結合ステージID | shuffle read（bytes） | shuffle write（bytes） | タスク中央値 / p95 / 最大（ms） | 最大/中央値 |
+|---|---:|---:|---:|---:|---|---:|
+| broadcast_1 | 0.309422 | 45 | 0 | 2571 | 34.5 / 40.30 / 41 | 1.19 |
+| broadcast_2 | 0.307314 | 51 | 0 | 2571 | 33.0 / 51.30 / 52 | 1.58 |
+| broadcast_3 | 0.233173 | 75 | 0 | 2571 | 22.5 / 23.65 / 24 | 1.07 |
+| sort_merge_1 | 1.112359 | 37 | 27829772 | 2555 | 24.5 / 327.65 / 489 | 19.96 |
+| sort_merge_2 | 1.089073 | 58 | 27829772 | 2555 | 24.0 / 319.00 / 473 | 19.71 |
+| sort_merge_3 | 0.920105 | 67 | 27829772 | 2555 | 22.0 / 305.25 / 454 | 20.64 |
+
+各結合ステージは8タスク。SQLイベントの結合ノードにある `number of output rows` のaccumulator IDと、StageCompletedのAccumulablesを対応させてステージを特定した。タスク時間は成功タスクのFinish Time−Launch Timeで、実行待ち時間を含まない。p95は8つの実測時間から線形補間した分位点。個別のタスク時間とすべての集計値はreport.jsonに保存した。
+
+シャッフルreadはTask Metricsのlocal bytesとremote bytesの合計、writeは同ステージのShuffle Bytes Writtenの合計（いずれもSparkが記録するバイト数）。SMJのreadは結合用Exchangeの入力である。一方、結合ステージのwriteは結合後のセグメント集計用Exchangeへの出力であり、結合入力のシャッフルと混同しない。**0 BはBHJの結合ステージのshuffle readだけを指す。** ジョブ全体のシャッフル量、shuffle write、ブロードキャスト転送量が0という意味ではない。ブロードキャスト構築と後段集計の時間は全体の処理時間に含む。
+
+Sparkの生イベントログを `performance/events/`、標準出力・エラーを `performance/run.log`、集計出力を `performance/output.json` に保存した。指定された時間・結合ステージのシャッフル量・タスク時間の偏り・計画はすべて取得できた。演算子単独のタスク時間はステージ内で結合と部分集計が融合しているため分離取得していない。クラウドlocal[2]なので複数ホスト間のネットワーク転送性能も測定できない。これらを推定値で補っていない。
+
+### 原因と改善策の適用条件
+
+SMJはcustomer_idのハッシュで入力を再分配するため、顧客0の270万行が同じパーティションに集まる。少数のキーが偏ると、パーティション数を増やすだけではそのキーを分割できない。今回の結合ステージでは最長タスクが中央値の約20倍、シャッフルreadが27,829,772 bytesだった。小さい顧客マスタを各executorに配れる場合、ブロードキャスト結合は有効である。BHJはその顧客マスタを配り、注文の元の8パーティションで結合するためキーで注文を再分配しない。観測された時間と偏りの改善はこの計画の違いに整合する。ただし、この小規模な単一ホストの3反復だけから本番クラスタの性能を断定しない。
+
+| 改善策 | 適用条件・留意点 |
+|---|---|
+| 小さい顧客マスタをブロードキャスト | フィルタ・列削減後のハッシュ表が各executorのメモリとdriverの構築可能量に収まり、転送時間も許容できる場合。今回の10,001行はこの条件に適する。大きいマスタへの強制ヒントはメモリ不足やタイムアウトの原因になる。 |
+| AQEとskewJoinを有効化 | SMJが必要で、シャッフル統計から偏りパーティションを検出できる場合。サイズ・中央値倍率の閾値を確認し、実行後の最終計画で分割の有無を検証する。今回AQEは無効であり効果は未計測。 |
+| ホットキーのソルティング | ブロードキャスト不可、AQEで解消しない大きな偏りがある場合。注文のホットキーを複数saltへ分け、対応する顧客行をsalt分複製する。結合条件と重複数を検証し、余分な複製・シャッフルと比較する。今回未実施。 |
+| 結合前の集計 | 明細の属性や明細単位の出力が不要で、集計と結合を交換しても意味が保たれる場合。件数・金額を顧客別に先に集計し、マスタと結合する。明細が必要な処理にはそのまま適用できない。今回未実施。 |
+
+3回の測定に信頼区間は付けていない。OS/JVMの残存状態、共有クラウドの負荷、実行順の影響は残る。性能の一般化には本番相当のデータサイズ・マスタサイズ・分散環境で追加検証が必要。GitHub公開は行っていない。
+
+
+### 公開前の小規模再現確認
+
+300万行の性能計測とは別に、2,000注文の全出力一致だけを再確認する手順を用意した。以下は性能計測もウォームアップも行わず、既存の `results/` と `performance/` を変更しない。
+
+```bash
+cd /workspace/pyspark-sales-pipeline
+mkdir -p review/small
+SPARK_LOCAL_IP=127.0.0.1 .venv/bin/python benchmark.py --small-only > review/small/run.log 2>&1
+cat review/small/verification.json
+```
+
+この確認は結合方式間のスキーマ・全行の値・順序・件数を対象とする。第1段階のDataFrame APIとSpark SQLの比較は `results/verification.json` に保存した別の検証である。300万行では6回の集計結果を比較しており、全明細の一致は検証していない。性能表の中央値は保存済みの各3回の実測値から算出した値であり、小規模再現実行で更新しない。
+
+公開前の小規模再現確認はクラウドで1回実行し、終了コード0・PASS。実際の方式はSortMergeJoin / BroadcastHashJoin、AQEはfalse。300万行の再計測は行っていない。公開対象の全ファイルは [review/public-files.txt](review/public-files.txt)、変更差分は [review/changes.diff](review/changes.diff)、レビュー記録は [review/REVIEW.txt](review/REVIEW.txt) を参照。

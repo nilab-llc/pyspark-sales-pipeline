@@ -1,0 +1,20 @@
+[
+  {
+    "customer_id": "C001",
+    "customer_name": "Alice",
+    "total_sales": "265.50",
+    "sales_rank": 1
+  },
+  {
+    "customer_id": "C002",
+    "customer_name": "Bob",
+    "total_sales": "203.00",
+    "sales_rank": 2
+  },
+  {
+    "customer_id": "C003",
+    "customer_name": "Carol",
+    "total_sales": "150.00",
+    "sales_rank": 3
+  }
+]

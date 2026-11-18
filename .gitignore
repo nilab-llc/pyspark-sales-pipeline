@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+artifacts/
+spark-warehouse/
+# Retain machine-specific Spark events locally; publish summarized metrics/plans.
+performance/events/
+review/small/events/

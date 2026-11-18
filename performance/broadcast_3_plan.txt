@@ -1,0 +1,54 @@
+== Parsed Logical Plan ==
+'Sort ['segment ASC NULLS FIRST], true
++- Aggregate [segment#21L], [segment#21L, count(1) AS orders#1344L, sum(amount#18L) AS sales#1345L, sum(order_id#16L) AS order_id_sum#1346L]
+   +- Project [customer_id#17L, order_id#16L, amount#18L, segment#21L]
+      +- Join Inner, (customer_id#17L = customer_id#20L)
+         :- Project [id#15L AS order_id#16L, CASE WHEN NOT ((id#15L % cast(10 as bigint)) = cast(0 as bigint)) THEN cast(0 as bigint) ELSE ((cast((cast(id#15L as double) / cast(10 as double)) as bigint) % cast(10000 as bigint)) + cast(1 as bigint)) END AS customer_id#17L, ((id#15L % cast(100 as bigint)) + cast(1 as bigint)) AS amount#18L]
+         :  +- Range (0, 3000000, step=1, splits=Some(8))
+         +- ResolvedHint (strategy=broadcast)
+            +- Project [id#19L AS customer_id#20L, (id#19L % cast(5 as bigint)) AS segment#21L]
+               +- Range (0, 10001, step=1, splits=Some(2))
+
+== Analyzed Logical Plan ==
+segment: bigint, orders: bigint, sales: bigint, order_id_sum: bigint
+Sort [segment#21L ASC NULLS FIRST], true
++- Aggregate [segment#21L], [segment#21L, count(1) AS orders#1344L, sum(amount#18L) AS sales#1345L, sum(order_id#16L) AS order_id_sum#1346L]
+   +- Project [customer_id#17L, order_id#16L, amount#18L, segment#21L]
+      +- Join Inner, (customer_id#17L = customer_id#20L)
+         :- Project [id#15L AS order_id#16L, CASE WHEN NOT ((id#15L % cast(10 as bigint)) = cast(0 as bigint)) THEN cast(0 as bigint) ELSE ((cast((cast(id#15L as double) / cast(10 as double)) as bigint) % cast(10000 as bigint)) + cast(1 as bigint)) END AS customer_id#17L, ((id#15L % cast(100 as bigint)) + cast(1 as bigint)) AS amount#18L]
+         :  +- Range (0, 3000000, step=1, splits=Some(8))
+         +- ResolvedHint (strategy=broadcast)
+            +- Project [id#19L AS customer_id#20L, (id#19L % cast(5 as bigint)) AS segment#21L]
+               +- Range (0, 10001, step=1, splits=Some(2))
+
+== Optimized Logical Plan ==
+Sort [segment#21L ASC NULLS FIRST], true
++- Aggregate [segment#21L], [segment#21L, count(1) AS orders#1344L, sum(amount#18L) AS sales#1345L, sum(order_id#16L) AS order_id_sum#1346L]
+   +- Project [order_id#16L, amount#18L, segment#21L]
+      +- Join Inner, (customer_id#17L = customer_id#20L), rightHint=(strategy=broadcast)
+         :- Filter isnotnull(customer_id#17L)
+         :  +- InMemoryRelation [order_id#16L, customer_id#17L, amount#18L], StorageLevel(disk, memory, deserialized, 1 replicas)
+         :        +- *(1) Project [id#15L AS order_id#16L, CASE WHEN NOT ((id#15L % 10) = 0) THEN 0 ELSE ((cast((cast(id#15L as double) / 10.0) as bigint) % 10000) + 1) END AS customer_id#17L, ((id#15L % 100) + 1) AS amount#18L]
+         :           +- *(1) Range (0, 3000000, step=1, splits=8)
+         +- InMemoryRelation [customer_id#20L, segment#21L], StorageLevel(disk, memory, deserialized, 1 replicas)
+               +- *(1) Project [id#19L AS customer_id#20L, (id#19L % 5) AS segment#21L]
+                  +- *(1) Range (0, 10001, step=1, splits=2)
+
+== Physical Plan ==
+*(3) Sort [segment#21L ASC NULLS FIRST], true, 0
++- Exchange rangepartitioning(segment#21L ASC NULLS FIRST, 8), ENSURE_REQUIREMENTS, [plan_id=977]
+   +- *(2) HashAggregate(keys=[segment#21L], functions=[count(1), sum(amount#18L), sum(order_id#16L)], output=[segment#21L, orders#1344L, sales#1345L, order_id_sum#1346L])
+      +- Exchange hashpartitioning(segment#21L, 8), ENSURE_REQUIREMENTS, [plan_id=973]
+         +- *(1) HashAggregate(keys=[segment#21L], functions=[partial_count(1), partial_sum(amount#18L), partial_sum(order_id#16L)], output=[segment#21L, count#1442L, sum#1443L, sum#1444L])
+            +- *(1) Project [order_id#16L, amount#18L, segment#21L]
+               +- *(1) BroadcastHashJoin [customer_id#17L], [customer_id#20L], Inner, BuildRight, false
+                  :- *(1) Filter isnotnull(customer_id#17L)
+                  :  +- InMemoryTableScan [order_id#16L, customer_id#17L, amount#18L], [isnotnull(customer_id#17L)]
+                  :        +- InMemoryRelation [order_id#16L, customer_id#17L, amount#18L], StorageLevel(disk, memory, deserialized, 1 replicas)
+                  :              +- *(1) Project [id#15L AS order_id#16L, CASE WHEN NOT ((id#15L % 10) = 0) THEN 0 ELSE ((cast((cast(id#15L as double) / 10.0) as bigint) % 10000) + 1) END AS customer_id#17L, ((id#15L % 100) + 1) AS amount#18L]
+                  :                 +- *(1) Range (0, 3000000, step=1, splits=8)
+                  +- BroadcastExchange HashedRelationBroadcastMode(List(input[0, bigint, false]),false), [plan_id=956]
+                     +- InMemoryTableScan [customer_id#20L, segment#21L]
+                           +- InMemoryRelation [customer_id#20L, segment#21L], StorageLevel(disk, memory, deserialized, 1 replicas)
+                                 +- *(1) Project [id#19L AS customer_id#20L, (id#19L % 5) AS segment#21L]
+                                    +- *(1) Range (0, 10001, step=1, splits=2)

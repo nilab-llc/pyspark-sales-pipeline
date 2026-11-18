@@ -1,0 +1,47 @@
+== Parsed Logical Plan ==
+'Sort ['order_id ASC NULLS FIRST], true
++- Project [customer_id#2L, order_id#1L, amount#3L, segment#6L]
+   +- Join Inner, (customer_id#2L = customer_id#5L)
+      :- ResolvedHint (strategy=merge)
+      :  +- Project [id#0L AS order_id#1L, CASE WHEN NOT ((id#0L % cast(10 as bigint)) = cast(0 as bigint)) THEN cast(0 as bigint) ELSE ((cast((cast(id#0L as double) / cast(10 as double)) as bigint) % cast(10000 as bigint)) + cast(1 as bigint)) END AS customer_id#2L, ((id#0L % cast(100 as bigint)) + cast(1 as bigint)) AS amount#3L]
+      :     +- Range (0, 2000, step=1, splits=Some(8))
+      +- ResolvedHint (strategy=merge)
+         +- Project [id#4L AS customer_id#5L, (id#4L % cast(5 as bigint)) AS segment#6L]
+            +- Range (0, 10001, step=1, splits=Some(2))
+
+== Analyzed Logical Plan ==
+customer_id: bigint, order_id: bigint, amount: bigint, segment: bigint
+Sort [order_id#1L ASC NULLS FIRST], true
++- Project [customer_id#2L, order_id#1L, amount#3L, segment#6L]
+   +- Join Inner, (customer_id#2L = customer_id#5L)
+      :- ResolvedHint (strategy=merge)
+      :  +- Project [id#0L AS order_id#1L, CASE WHEN NOT ((id#0L % cast(10 as bigint)) = cast(0 as bigint)) THEN cast(0 as bigint) ELSE ((cast((cast(id#0L as double) / cast(10 as double)) as bigint) % cast(10000 as bigint)) + cast(1 as bigint)) END AS customer_id#2L, ((id#0L % cast(100 as bigint)) + cast(1 as bigint)) AS amount#3L]
+      :     +- Range (0, 2000, step=1, splits=Some(8))
+      +- ResolvedHint (strategy=merge)
+         +- Project [id#4L AS customer_id#5L, (id#4L % cast(5 as bigint)) AS segment#6L]
+            +- Range (0, 10001, step=1, splits=Some(2))
+
+== Optimized Logical Plan ==
+Sort [order_id#1L ASC NULLS FIRST], true
++- Project [customer_id#2L, order_id#1L, amount#3L, segment#6L]
+   +- Join Inner, (customer_id#2L = customer_id#5L), leftHint=(strategy=merge), rightHint=(strategy=merge)
+      :- Project [id#0L AS order_id#1L, CASE WHEN NOT ((id#0L % 10) = 0) THEN 0 ELSE ((cast((cast(id#0L as double) / 10.0) as bigint) % 10000) + 1) END AS customer_id#2L, ((id#0L % 100) + 1) AS amount#3L]
+      :  +- Filter CASE WHEN NOT ((id#0L % 10) = 0) THEN true ELSE isnotnull(((cast((cast(id#0L as double) / 10.0) as bigint) % 10000) + 1)) END
+      :     +- Range (0, 2000, step=1, splits=Some(8))
+      +- Project [id#4L AS customer_id#5L, (id#4L % 5) AS segment#6L]
+         +- Range (0, 10001, step=1, splits=Some(2))
+
+== Physical Plan ==
+*(6) Sort [order_id#1L ASC NULLS FIRST], true, 0
++- Exchange rangepartitioning(order_id#1L ASC NULLS FIRST, 8), ENSURE_REQUIREMENTS, [plan_id=56]
+   +- *(5) Project [customer_id#2L, order_id#1L, amount#3L, segment#6L]
+      +- *(5) SortMergeJoin [customer_id#2L], [customer_id#5L], Inner
+         :- *(2) Sort [customer_id#2L ASC NULLS FIRST], false, 0
+         :  +- Exchange hashpartitioning(customer_id#2L, 8), ENSURE_REQUIREMENTS, [plan_id=42]
+         :     +- *(1) Project [id#0L AS order_id#1L, CASE WHEN NOT ((id#0L % 10) = 0) THEN 0 ELSE ((cast((cast(id#0L as double) / 10.0) as bigint) % 10000) + 1) END AS customer_id#2L, ((id#0L % 100) + 1) AS amount#3L]
+         :        +- *(1) Filter CASE WHEN NOT ((id#0L % 10) = 0) THEN true ELSE isnotnull(((cast((cast(id#0L as double) / 10.0) as bigint) % 10000) + 1)) END
+         :           +- *(1) Range (0, 2000, step=1, splits=8)
+         +- *(4) Sort [customer_id#5L ASC NULLS FIRST], false, 0
+            +- Exchange hashpartitioning(customer_id#5L, 8), ENSURE_REQUIREMENTS, [plan_id=48]
+               +- *(3) Project [id#4L AS customer_id#5L, (id#4L % 5) AS segment#6L]
+                  +- *(3) Range (0, 10001, step=1, splits=2)

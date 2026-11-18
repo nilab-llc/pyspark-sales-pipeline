@@ -1,0 +1,30 @@
+{
+  "status": "PASS",
+  "executed_at_utc": "2026-11-18T04:34:42.397479+00:00",
+  "python": "3.12.14",
+  "spark": "4.0.1",
+  "java": "21.0.13",
+  "master": "local[2]",
+  "counts": {
+    "raw_orders": 21,
+    "distinct_normalized_orders": 20,
+    "valid_before_join": 11,
+    "joined_orders": 9
+  },
+  "checks": {
+    "monthly_sales": {
+      "schema_equal": true,
+      "multiset_equal_both_directions": true,
+      "ordered_rows_equal": true,
+      "rows": 3
+    },
+    "customer_ranking": {
+      "schema_equal": true,
+      "multiset_equal_both_directions": true,
+      "ordered_rows_equal": true,
+      "rows": 3
+    }
+  },
+  "expected_results_assertions": "PASS",
+  "tie_ranking_assertion": "PASS"
+}
